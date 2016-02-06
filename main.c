@@ -28,21 +28,25 @@
 
 // forward declarations
 struct LispyValue;
+union LispyNumber;
 struct LispyEnvironment;
 typedef struct LispyValue lval;
+typedef union LispyNumber lnum;
 typedef struct LispyEnvironment lenv;
 
 // lispy value
 enum { LVAL_ERR, LVAL_NUM, LVAL_SYM, LVAL_FUN, LVAL_SEXPR, LVAL_QEXPR };
+enum { LNUM_DEC, LNUM_INT };
 enum { LERR_DIV_ZERO, LERR_BAD_OP, LERR_BAD_NUM };
 
 typedef lval*(*lbuiltin)(lenv*, lval*);
 
 struct LispyValue {
   int type;
+  int num_type;
 
   // basic
-  double num;
+  lnum* num;
   char* err;
   char* sym;
 
@@ -55,6 +59,11 @@ struct LispyValue {
   // expression
   int count;
   lval** cell;
+};
+
+union LispyNumber {
+  long integer;
+  double decimal;
 };
 
 struct LispyEnvironment {
@@ -79,7 +88,8 @@ void lval_del(lval*);
 lval* lval_copy(lval*);
 
 lval* lval_read(mpc_ast_t*);
-lval* lval_read_num(mpc_ast_t*);
+lval* lval_read_num_i(mpc_ast_t*);
+lval* lval_read_num_d(mpc_ast_t*);
 
 lval* lval_eval(lenv*, lval*);
 lval* lval_eval_sexpr(lenv*, lval*);
@@ -110,7 +120,8 @@ lval* builtin_list(lenv*, lval*);
 lval* builtin_eval(lenv*, lval*);
 lval* builtin_join(lenv*, lval*);
 
-lval* lval_num(double);
+lval* lval_num_i(long);
+lval* lval_num_d(double);
 lval* lval_err(char*, ...);
 lval* lval_sym(char*);
 lval* lval_sexpr(void);
@@ -127,6 +138,8 @@ int main() {
   signal(SIGINT, signal_handler);
 
   // create parsers
+  mpc_parser_t* Integer = mpc_new("integer");
+  mpc_parser_t* Decimal = mpc_new("decimal");
   mpc_parser_t* Number = mpc_new("number");
   mpc_parser_t* Symbol = mpc_new("symbol");
   mpc_parser_t* Sexpr  = mpc_new("sexpr");
@@ -135,15 +148,17 @@ int main() {
   mpc_parser_t* Lispy  = mpc_new("lispy");
 
   mpca_lang(MPCA_LANG_DEFAULT,
-      "                                                                    \
-      number : /-?[0-9]+[.]?[0-9]*/ ;                                      \
-      symbol : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&%^]+/ ;                        \
-      sexpr  : '(' <expr>* ')' ;                                           \
-      qexpr  : '{' <expr>* '}' ;                                           \
-      expr   : <number> | <symbol> | <sexpr> | <qexpr> ;                   \
-      lispy  : /^/ <expr>* /$/ ;                                           \
+      "                                                        \
+      decimal : /-?[0-9]+[.][0-9]+/ ;                                  \
+      integer : /-?[0-9]+/ ;                                   \
+      number : <decimal> | <integer> ;                \
+      symbol : /[a-zA-Z0-9_+\\-*\\/\\\\=<>!&%^]+/ ;            \
+      sexpr  : '(' <expr>* ')' ;                               \
+      qexpr  : '{' <expr>* '}' ;                               \
+      expr   : <number> | <symbol> | <sexpr> | <qexpr> ;       \
+      lispy  : /^/ <expr>* /$/ ;                               \
       ",
-      Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
+      Decimal, Integer, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
   // version and exit information
   puts("> lispy version 0.0.1");
   puts("> press ctrl+c to exit");
@@ -179,7 +194,7 @@ int main() {
   }
 
   lenv_del(e);
-  mpc_cleanup(6, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
+  mpc_cleanup(8, Integer, Decimal, Number, Symbol, Sexpr, Qexpr, Expr, Lispy);
 
   return on_exit();
 }
@@ -344,6 +359,68 @@ lval* builtin_lambda(lenv* e, lval* a) {
   return lval_lambda(formals, body);
 }
 
+void lnum_int_op(char* op, lval* x, lval* y) {
+  x->num_type = LNUM_INT;
+
+  if (strcmp(op, "+") == 0) { x->num->integer += y->num->integer; }
+  if (strcmp(op, "-") == 0) { x->num->integer -= y->num->integer; }
+  if (strcmp(op, "*") == 0) { x->num->integer *= y->num->integer; }
+  if (strcmp(op, "/") == 0) {
+    if (y->num->integer == 0) {
+      lval_del(x);
+      x = lval_err("function %s attempted to divide by 0", op);
+    } else {
+      x->num->integer /= y->num->integer;
+    }
+  }
+  if (strcmp(op, "%") == 0) {
+    if (y->num->integer == 0) {
+      lval_del(x);
+      x = lval_err("function %s attempted to divide by 0", op);
+    } else {
+      x->num->integer %= y->num->integer;
+    }
+  }
+  if (strcmp(op, "^") == 0) {
+    x->num->integer = pow(x->num->integer, y->num->integer);
+  }
+}
+
+void lnum_dec_op(char* op, lval* x, lval* y) {
+  if (x->num_type == LNUM_INT) {
+    x->num_type = LNUM_DEC;
+    x->num->decimal = (double) x->num->integer;
+  }
+  if (y->num_type == LNUM_INT) {
+    y->num_type = LNUM_DEC;
+    y->num->decimal = (double) y->num->integer;
+  }
+
+  if (strcmp(op, "+") == 0) { x->num->decimal += y->num->decimal; }
+  if (strcmp(op, "-") == 0) { x->num->decimal -= y->num->decimal; }
+  if (strcmp(op, "*") == 0) { x->num->decimal *= y->num->decimal; }
+  if (strcmp(op, "/") == 0) {
+    if (y->num->decimal == 0) {
+      lval_del(x);
+      x = lval_err("function %s attempted to divide by 0", op);
+    } else {
+      x->num->decimal /= y->num->decimal;
+    }
+  }
+  if (strcmp(op, "%") == 0) {
+    if (y->num->decimal == 0) {
+      lval_del(x);
+      x = lval_err("function %s attempted to divide by 0", op);
+    } else {
+      x->num->decimal = fmod(x->num->decimal, y->num->decimal);
+    }
+  }
+  if (strcmp(op, "^") == 0) {
+    x->num->decimal = pow(x->num->decimal, y->num->decimal);
+  }
+
+}
+
 lval* builtin_op(lenv* e, lval* a, char* op) {
   // ensure all are numbers
   for (int i = 0; i < a->count; ++i) {
@@ -355,7 +432,12 @@ lval* builtin_op(lenv* e, lval* a, char* op) {
 
   // if no more args and subtracting then negate
   if ((strcmp(op, "-") == 0) && a->count == 0) {
-    x->num *= -1;
+    if (x->num_type == LNUM_INT) {
+      x->num->integer *= -1;
+    }
+    else if (x->num_type == LNUM_DEC) {
+      x->num->decimal *= -1;
+    }
   }
 
   // while there are other elements
@@ -363,29 +445,16 @@ lval* builtin_op(lenv* e, lval* a, char* op) {
     // pop next element
     lval* y = lval_pop(a, 0);
 
-    if (strcmp(op, "+") == 0) { x->num += y->num; }
-    if (strcmp(op, "-") == 0) { x->num -= y->num; }
-    if (strcmp(op, "*") == 0) { x->num *= y->num; }
-    if (strcmp(op, "/") == 0) {
-      if (y->num == 0) {
-        lval_del(x);
-        lval_del(y);
-        x = lval_err("function '%s': attempted to divide by zero", op);
-        break;
-      }
-      x->num /= y->num;
+    if (x->num_type == LNUM_INT && y->num_type == LNUM_INT) {
+      lnum_int_op(op, x, y);
+    } else {
+      lnum_dec_op(op, x, y);
     }
-    if (strcmp(op, "%") == 0) {
-      if (y->num == 0) {
-        lval_del(x);
-        lval_del(y);
-        x = lval_err("function '%s': attempted to divide by zero", op);
-        break;
-      }
-      x->num = fmod(x->num, y->num);
-    }
-    if (strcmp(op, "^") == 0) { x->num = pow(x->num, y->num); }
+
     lval_del(y);
+    if (x->type == LVAL_ERR) {
+      break;
+    }
   }
 
   lval_del(a);
@@ -428,7 +497,20 @@ lval* builtin_min(lenv* e, lval* a) {
   while (a->count > 0) {
     // pop next element
     lval* y = lval_pop(a, 0);
-    x->num = fmin(x->num, y->num);
+    if (x->num_type == LNUM_INT && y->num_type == LNUM_INT) {
+      x->num->integer = x->num->integer > y->num->integer ?
+        y->num->integer : x->num->integer;
+    } else {
+      if (x->num_type == LNUM_INT) {
+        x->num_type = LNUM_DEC;
+        x->num->decimal = (double) x->num->integer;
+      }
+      if (y->num_type == LNUM_INT) {
+        y->num_type = LNUM_DEC;
+        y->num->decimal = (double) y->num->integer;
+      }
+      x->num->decimal = fmin(x->num->decimal, y->num->decimal);
+    }
     lval_del(y);
   }
 
@@ -448,7 +530,20 @@ lval* builtin_max(lenv* e, lval* a) {
   while (a->count > 0) {
     // pop next element
     lval* y = lval_pop(a, 0);
-    x->num = fmax(x->num, y->num);
+    if (x->num_type == LNUM_INT && y->num_type == LNUM_INT) {
+      x->num->integer = x->num->integer > y->num->integer ?
+        x->num->integer : y->num->integer;
+    } else {
+      if (x->num_type == LNUM_INT) {
+        x->num_type = LNUM_DEC;
+        x->num->decimal = (double) x->num->integer;
+      }
+      if (y->num_type == LNUM_INT) {
+        y->num_type = LNUM_DEC;
+        y->num->decimal = (double) y->num->integer;
+      }
+      x->num->decimal = fmax(x->num->decimal, y->num->decimal);
+    }
     lval_del(y);
   }
 
@@ -524,10 +619,21 @@ lval* lval_join(lval* x, lval* y) {
   return x;
 }
 
-lval* lval_num(double x) {
+lval* lval_num_i(long x) {
   lval* v = malloc(sizeof(lval));
   v->type = LVAL_NUM;
-  v->num = x;
+  v->num_type = LNUM_INT;
+  v->num = malloc(sizeof(lnum));
+  v->num->integer = x;
+  return v;
+}
+
+lval* lval_num_d(double x) {
+  lval* v = malloc(sizeof(lval));
+  v->type = LVAL_NUM;
+  v->num_type = LNUM_DEC;
+  v->num = malloc(sizeof(lnum));
+  v->num->decimal = x;
   return v;
 }
 
@@ -676,16 +782,29 @@ lval* lval_call(lenv* e, lval* f, lval* a) {
   }
 }
 
-lval* lval_read_num(mpc_ast_t* t) {
+lval* lval_read_num_i(mpc_ast_t* t) {
+  errno = 0;
+  long x = strtol(t->contents, NULL, 10);
+  return errno != ERANGE ?
+    lval_num_i(x) : lval_err("invalid number");
+}
+
+lval* lval_read_num_d(mpc_ast_t* t) {
   errno = 0;
   double x = strtod(t->contents, NULL);
   return errno != ERANGE ?
-    lval_num(x) : lval_err("invalid number");
+    lval_num_d(x) : lval_err("invalid number");
 }
 
 lval* lval_read(mpc_ast_t* t) {
   // convert if symbol or number
-  if (strstr(t->tag, "number")) { return lval_read_num(t); }
+  if (strstr(t->tag, "number")) {
+    if (strstr(t->tag, "decimal")) {
+      return lval_read_num_d(t);
+    } else {
+      return lval_read_num_i(t);
+    }
+  }
   if (strstr(t->tag, "symbol")) { return lval_sym(t->contents); }
 
   // if root (>) or sexpr then init list
@@ -717,6 +836,7 @@ lval* lval_add(lval* v, lval* x) {
 void lval_del(lval* v) {
   switch (v->type) {
     case LVAL_NUM:
+      free(v->num);
       break;
 
     case LVAL_ERR:
@@ -756,7 +876,14 @@ lval* lval_copy(lval* v) {
   switch(v->type) {
     // copy functions and numbers directly
     case LVAL_NUM:
-      x->num = v->num;
+      x->num_type = v->num_type;
+      x->num = malloc(sizeof(lnum));
+      if (v->num_type == LNUM_INT) {
+        x->num->integer = v->num->integer;
+      }
+      else if (v->num_type == LNUM_DEC) {
+        x->num->decimal = v->num->decimal;
+      }
       break;
     case LVAL_FUN:
       if (v->builtin) {
@@ -885,7 +1012,12 @@ void lval_expr_print(lval* v, char open, char close) {
 void lval_print(lval* v) {
   switch (v->type) {
     case LVAL_NUM:
-      printf("%g", v->num);
+      if (v->num_type == LNUM_INT) {
+        printf("%li", v->num->integer);
+      }
+      else if (v->num_type == LNUM_DEC) {
+        printf("%.2f", v->num->decimal);
+      }
       break;
 
     case LVAL_ERR:
