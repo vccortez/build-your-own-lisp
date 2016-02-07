@@ -186,13 +186,13 @@ int main(int argc, char** argv) {
       ",
       Decimal, Integer, Number, Symbol, String,
       Comment, Sexpr, Qexpr, Expr, Lispy);
-  // version and exit information
 
   lenv* e = lenv_new();
   lenv_register_builtins(e);
 
   // run repl if no files passed
   if (argc == 1) {
+    // version and exit information
     puts("> lispy version 0.0.1");
     puts("> press ctrl+c to exit");
 
@@ -338,8 +338,8 @@ void lenv_add_builtin(lenv* e, char* name, lbuiltin func) {
 
 void lenv_register_builtins(lenv* e) {
   // primitives
-  lenv_add_primitive(e, "true", 1);
-  lenv_add_primitive(e, "false", 0);
+  // lenv_add_primitive(e, "true", 1);
+  // lenv_add_primitive(e, "false", 0);
 
   // variable functions
   lenv_add_builtin(e, "\\", builtin_lambda);
