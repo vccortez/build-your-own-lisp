@@ -45,7 +45,6 @@
 (fun {or x y}  {+ x y})
 (fun {and x y} {* x y})
 
-
 ;;; Numeric Functions
 
 ; Minimum of Arguments
@@ -66,6 +65,13 @@
       (= {item} (fst xs))
       (if (> item rest) {item} {rest})
     }  
+})
+
+; Range of Numbers
+(fun {range a b} {
+  if (< a b)
+    {join (list a) (range (+ a 1) b)}
+    {list a}
 })
 
 ;;; Conditional Functions
