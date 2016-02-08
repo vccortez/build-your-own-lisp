@@ -53,6 +53,7 @@ static lval* builtin_def(lenv*, lval*);
 static lval* builtin_put(lenv*, lval*);
 
 static lval* builtin_lambda(lenv*, lval*);
+static lval* builtin_unpack(lenv*, lval*);
 
 static lval* builtin_op(lenv*, lval*, char*);
 static lval* builtin_add(lenv*, lval*);
@@ -228,20 +229,17 @@ lval* lval_eval_sexpr(lenv* e, lval* v) {
     return lval_take(v, 0);
   }
 
-  lval* f = lval_pop(v, 0);
-
-  // ensure first element is function
-  if (f->type != LVAL_FUN) {
-    lval* err = lval_err("s-expression expected %s, received %s",
-        ltype_name(LVAL_FUN), ltype_name(f->type));
-    lval_del(f);
+  // expression has no operator, return empty
+  if (v->cell[0]->type != LVAL_FUN) {
     lval_del(v);
-    return err;
+    return lval_sexpr();
   }
 
-  // call function to get result
+  // otherwise call function and return result
+  lval* f = lval_pop(v, 0);
   lval* result = lval_call(e, f, v);
   lval_del(f);
+
   return result;
 }
 
@@ -310,6 +308,7 @@ void lenv_register_builtins(lenv* e) {
 
   // list functions
   lenv_add_builtin(e, "list", builtin_list, "list");
+  lenv_add_builtin(e, "unpack", builtin_unpack, "unpack");
   lenv_add_builtin(e, "head", builtin_head, "head");
   lenv_add_builtin(e, "tail", builtin_tail, "tail");
   lenv_add_builtin(e, "eval", builtin_eval, "eval");
@@ -442,6 +441,20 @@ lval* builtin_error(lenv* e, lval* a) {
   lval_del(a);
 
   return err;
+}
+
+lval* builtin_unpack(lenv* e, lval* a) {
+  ASSERT_COUNT("unpack", a, 1);
+  ASSERT_TYPE("unpack", a, 0, LVAL_QEXPR);
+  ASSERT_FULL("unpack", a, 0);
+
+  lval* v = lval_take(a, 0);
+  v->type = LVAL_SEXPR;
+  if (v->count == 1) {
+    return lval_eval(e, v);
+  }
+
+  return v;
 }
 
 lval* builtin_lambda(lenv* e, lval* a) {
@@ -779,6 +792,16 @@ lval* lval_lambda(lval* formals, lval* body) {
 }
 
 lval* lval_call(lenv* e, lval* f, lval* a) {
+  // unpack special condition
+  if (a->count == 1 &&
+      a->cell[0]->type == LVAL_SEXPR && a->cell[0]->count > 1) {
+    for (int i = 0; i < a->cell[0]->count; ++i) {
+      lval_add(a, lval_copy(a->cell[0]->cell[i]));
+    }
+
+    lval_del(lval_pop(a, 0));
+  }
+
   // if builtin then call it
   if (f->builtin) {
     return f->builtin(e, a);

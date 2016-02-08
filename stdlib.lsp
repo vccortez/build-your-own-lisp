@@ -96,6 +96,9 @@
 
 ;;; List Functions
 
+; Unpack alias
+(def {unlist} unpack)
+
 ; First, Second, or Third Item in List
 (fun {fst l} { eval (head l) })
 (fun {snd l} { eval (head (tail l)) })
