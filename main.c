@@ -189,6 +189,13 @@ int main(int argc, char** argv) {
 
   lenv* e = lenv_new();
   lenv_register_builtins(e);
+  // add standard library
+  lval* args = lval_add(lval_sexpr(), lval_str("./stdlib.lsp"));
+  // pass to builtin load and get result
+  lval* x = builtin_load(e, args);
+  // if the result is an error be sure to print
+  if (x->type == LVAL_ERR) { lval_println(x); }
+  lval_del(x);
 
   // run repl if no files passed
   if (argc == 1) {
