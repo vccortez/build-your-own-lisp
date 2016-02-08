@@ -20,6 +20,7 @@ struct lispy_value {
   char *str;
 
   lbuiltin builtin;
+  char *name;
 
   lenv *env;
   lval *formals;

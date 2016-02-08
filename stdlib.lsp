@@ -19,17 +19,13 @@
   ((\ {_} b) ())
 })
 
-; Unpack List to Function
-(fun {unpack f l} {
+; Uses list elements as arguments of Function
+(fun {curry f l} {
   eval (join (list f) l)
 })
 
-; Unapply List to Function
-(fun {pack f & xs} {f xs})
-
-; Curried and Uncurried calling
-(def {curry} unpack)
-(def {uncurry} pack)
+; Uses arguments as list to Funcion
+(fun {uncurry f & xs} {f xs})
 
 ; Perform Several things in Sequence
 (fun {do & l} {
@@ -51,7 +47,7 @@
 (fun {min & xs} {
   if (== (tail xs) nil) {fst xs}
     {do 
-      (= {rest} (unpack min (tail xs)))
+      (= {rest} (curry min (tail xs)))
       (= {item} (fst xs))
       (if (< item rest) {item} {rest})
     }
@@ -61,7 +57,7 @@
 (fun {max & xs} {
   if (== (tail xs) nil) {fst xs}
     {do 
-      (= {rest} (unpack max (tail xs)))
+      (= {rest} (curry max (tail xs)))
       (= {item} (fst xs))
       (if (> item rest) {item} {rest})
     }  
@@ -79,14 +75,14 @@
 (fun {select & cs} {
   if (== cs nil)
     {error "No Selection Found"}
-    {if (fst (fst cs)) {snd (fst cs)} {unpack select (tail cs)}}
+    {if (fst (fst cs)) {snd (fst cs)} {curry select (tail cs)}}
 })
 
 (fun {case x & cs} {
   if (== cs nil)
     {error "No Case Found"}
     {if (== x (fst (fst cs))) {snd (fst cs)} {
-	  unpack case (join (list x) (tail cs))}}
+	  curry case (join (list x) (tail cs))}}
 })
 
 (def {otherwise} true)
@@ -190,14 +186,14 @@
 
 ; Take While
 (fun {take-while f l} {
-  if (not (unpack f (head l)))
+  if (not (curry f (head l)))
     {nil}
     {join (head l) (take-while f (tail l))}
 })
 
 ; Drop While
 (fun {drop-while f l} {
-  if (not (unpack f (head l)))
+  if (not (curry f (head l)))
     {l}
     {drop-while f (tail l)}
 })

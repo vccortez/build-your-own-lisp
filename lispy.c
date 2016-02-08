@@ -45,7 +45,7 @@ static lval* lval_join(lval*, lval*);
 static lval* lval_call(lenv*, lval*, lval*);
 static int   lval_eq(lval*, lval*);
 
-static void lenv_add_builtin(lenv*, char*, lbuiltin);
+static void lenv_add_builtin(lenv*, char*, lbuiltin, char*);
 static void lenv_register_builtins(lenv*);
 
 static lval* builtin_var(lenv*, lval*, char*);
@@ -89,7 +89,7 @@ static lval* lval_sym(char*);
 static lval* lval_str(char*);
 static lval* lval_sexpr(void);
 static lval* lval_qexpr(void);
-static lval* lval_fun(lbuiltin);
+static lval* lval_fun(lbuiltin, char*);
 static lval* lval_lambda(lval*, lval*);
 
 static char* ltype_name(int);
@@ -228,8 +228,9 @@ lval* lval_eval_sexpr(lenv* e, lval* v) {
     return lval_take(v, 0);
   }
 
-  // ensure first element is function
   lval* f = lval_pop(v, 0);
+
+  // ensure first element is function
   if (f->type != LVAL_FUN) {
     lval* err = lval_err("s-expression expected %s, received %s",
         ltype_name(LVAL_FUN), ltype_name(f->type));
@@ -279,9 +280,9 @@ lval* lval_take(lval* v, int i) {
   return x;
 }
 
-void lenv_add_builtin(lenv* e, char* name, lbuiltin func) {
-  lval* k = lval_sym(name);
-  lval* v = lval_fun(func);
+void lenv_add_builtin(lenv* e, char* id, lbuiltin func, char* name) {
+  lval* k = lval_sym(id);
+  lval* v = lval_fun(func, name);
   lenv_put(e, k, v);
   lval_del(k);
   lval_del(v);
@@ -289,38 +290,38 @@ void lenv_add_builtin(lenv* e, char* name, lbuiltin func) {
 
 void lenv_register_builtins(lenv* e) {
   // variable functions
-  lenv_add_builtin(e, "\\", builtin_lambda);
-  lenv_add_builtin(e, "def", builtin_def);
-  lenv_add_builtin(e, "=", builtin_put);
+  lenv_add_builtin(e, "\\", builtin_lambda, "lambda");
+  lenv_add_builtin(e, "def", builtin_def, "global_define");
+  lenv_add_builtin(e, "=", builtin_put, "local_define");
 
   // string functions
-  lenv_add_builtin(e, "load", builtin_load);
-  lenv_add_builtin(e, "error", builtin_error);
-  lenv_add_builtin(e, "print", builtin_print);
+  lenv_add_builtin(e, "load", builtin_load, "load");
+  lenv_add_builtin(e, "error", builtin_error, "error");
+  lenv_add_builtin(e, "print", builtin_print, "print");
 
   // comparison functions
-  lenv_add_builtin(e, "if", builtin_if);
-  lenv_add_builtin(e, "==", builtin_eq);
-  lenv_add_builtin(e, "!=", builtin_ne);
-  lenv_add_builtin(e, ">", builtin_gt);
-  lenv_add_builtin(e, "<", builtin_lt);
-  lenv_add_builtin(e, ">=", builtin_ge);
-  lenv_add_builtin(e, "<=", builtin_le);
+  lenv_add_builtin(e, "if", builtin_if, "if");
+  lenv_add_builtin(e, "==", builtin_eq, "equals");
+  lenv_add_builtin(e, "!=", builtin_ne, "not_equals");
+  lenv_add_builtin(e, ">", builtin_gt, "greater_than");
+  lenv_add_builtin(e, "<", builtin_lt, "lower_than");
+  lenv_add_builtin(e, ">=", builtin_ge, "greater_equals");
+  lenv_add_builtin(e, "<=", builtin_le, "lower_equals");
 
   // list functions
-  lenv_add_builtin(e, "list", builtin_list);
-  lenv_add_builtin(e, "head", builtin_head);
-  lenv_add_builtin(e, "tail", builtin_tail);
-  lenv_add_builtin(e, "eval", builtin_eval);
-  lenv_add_builtin(e, "join", builtin_join);
+  lenv_add_builtin(e, "list", builtin_list, "list");
+  lenv_add_builtin(e, "head", builtin_head, "head");
+  lenv_add_builtin(e, "tail", builtin_tail, "tail");
+  lenv_add_builtin(e, "eval", builtin_eval, "eval");
+  lenv_add_builtin(e, "join", builtin_join, "join");
 
   // math operators
-  lenv_add_builtin(e, "+", builtin_add);
-  lenv_add_builtin(e, "-", builtin_sub);
-  lenv_add_builtin(e, "*", builtin_mul);
-  lenv_add_builtin(e, "/", builtin_div);
-  lenv_add_builtin(e, "%", builtin_mod);
-  lenv_add_builtin(e, "^", builtin_exp);
+  lenv_add_builtin(e, "+", builtin_add, "add");
+  lenv_add_builtin(e, "-", builtin_sub, "subtract");
+  lenv_add_builtin(e, "*", builtin_mul, "multiply");
+  lenv_add_builtin(e, "/", builtin_div, "divide");
+  lenv_add_builtin(e, "%", builtin_mod, "modulus");
+  lenv_add_builtin(e, "^", builtin_exp, "exponential");
 }
 
 lval* builtin_var(lenv* e, lval* a, char* func) {
@@ -755,10 +756,12 @@ lval* lval_qexpr(void) {
   return v;
 }
 
-lval* lval_fun(lbuiltin func) {
+lval* lval_fun(lbuiltin func, char* s) {
   lval* v = malloc(sizeof(lval));
   v->type = LVAL_FUN;
   v->builtin = func;
+  v->name = malloc(strlen(s) + 1);
+  strcpy(v->name, s);
   return v;
 }
 
@@ -767,6 +770,7 @@ lval* lval_lambda(lval* formals, lval* body) {
 
   v->type = LVAL_FUN;
   v->builtin = NULL;
+  v->name = NULL;
   v->env = lenv_new();
   v->formals = formals;
   v->body = body;
@@ -776,7 +780,9 @@ lval* lval_lambda(lval* formals, lval* body) {
 
 lval* lval_call(lenv* e, lval* f, lval* a) {
   // if builtin then call it
-  if (f->builtin) { return f->builtin(e, a); }
+  if (f->builtin) {
+    return f->builtin(e, a);
+  }
 
   // record argument counts
   int given = a->count;
@@ -962,7 +968,9 @@ void lval_del(lval* v) {
       break;
 
     case LVAL_FUN:
-      if (!v->builtin) {
+      if (v->builtin) {
+        free(v->name);
+      } else {
         lenv_del(v->env);
         lval_del(v->formals);
         lval_del(v->body);
@@ -996,8 +1004,11 @@ lval* lval_copy(lval* v) {
     case LVAL_FUN:
       if (v->builtin) {
         x->builtin = v->builtin;
+        x->name = malloc(strlen(v->name) + 1);
+        strcpy(x->name, v->name);
       } else {
         x->builtin = NULL;
+        x->name = NULL;
         x->env = lenv_copy(v->env);
         x->formals = lval_copy(v->formals);
         x->body = lval_copy(v->body);
@@ -1146,7 +1157,7 @@ void lval_print(lval* v) {
 
     case LVAL_FUN:
       if (v->builtin) {
-        printf("<builtin>");
+        printf("(builtin): %s", v->name);
       } else {
         printf("(\\ ");
         lval_print(v->formals);
