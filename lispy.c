@@ -45,7 +45,6 @@ static lval* lval_join(lval*, lval*);
 static lval* lval_call(lenv*, lval*, lval*);
 static int   lval_eq(lval*, lval*);
 
-// static void lenv_add_primitive(lenv*, char*, double);
 static void lenv_add_builtin(lenv*, char*, lbuiltin);
 static void lenv_register_builtins(lenv*);
 
@@ -62,8 +61,6 @@ static lval* builtin_mul(lenv*, lval*);
 static lval* builtin_div(lenv*, lval*);
 static lval* builtin_mod(lenv*, lval*);
 static lval* builtin_exp(lenv*, lval*);
-static lval* builtin_min(lenv*, lval*);
-static lval* builtin_max(lenv*, lval*);
 
 static lval* builtin_head(lenv*, lval*);
 static lval* builtin_tail(lenv*, lval*);
@@ -172,7 +169,7 @@ lenv* lispy_init(void) {
   return env;
 }
 
-char* lispy_parse(lenv* env, char* input) {
+void lispy_parse(lenv* env, char* input) {
   mpc_result_t result;
 
   // parse user input
@@ -187,11 +184,9 @@ char* lispy_parse(lenv* env, char* input) {
     mpc_err_print(result.error);
     mpc_err_delete(result.error);
   }
-
-  return "ok";
 }
 
-char* lispy_exec(lenv* env, char* input) {
+void lispy_exec(lenv* env, char* input) {
   lval* file = lval_add(lval_sexpr(), lval_str(input));
 
   lval* result = builtin_load(env, file);
@@ -201,8 +196,6 @@ char* lispy_exec(lenv* env, char* input) {
   }
 
   lval_del(result);
-
-  return "ok";
 }
 
 void lispy_clean(lenv* env) {
@@ -286,16 +279,6 @@ lval* lval_take(lval* v, int i) {
   return x;
 }
 
-/*
-void lenv_add_primitive(lenv* e, char* name, double val) {
-  lval* k = lval_sym(name);
-  lval* v = lval_num(val, LNUM_INT);
-  lenv_put(e, k, v);
-  lval_del(k);
-  lval_del(v);
-}
-*/
-
 void lenv_add_builtin(lenv* e, char* name, lbuiltin func) {
   lval* k = lval_sym(name);
   lval* v = lval_fun(func);
@@ -305,10 +288,6 @@ void lenv_add_builtin(lenv* e, char* name, lbuiltin func) {
 }
 
 void lenv_register_builtins(lenv* e) {
-  // primitives
-  // lenv_add_primitive(e, "true", 1);
-  // lenv_add_primitive(e, "false", 0);
-
   // variable functions
   lenv_add_builtin(e, "\\", builtin_lambda);
   lenv_add_builtin(e, "def", builtin_def);
@@ -342,8 +321,6 @@ void lenv_register_builtins(lenv* e) {
   lenv_add_builtin(e, "/", builtin_div);
   lenv_add_builtin(e, "%", builtin_mod);
   lenv_add_builtin(e, "^", builtin_exp);
-  lenv_add_builtin(e, "min", builtin_min);
-  lenv_add_builtin(e, "max", builtin_max);
 }
 
 lval* builtin_var(lenv* e, lval* a, char* func) {
@@ -583,56 +560,6 @@ lval* builtin_mod(lenv* e, lval* a) {
 
 lval* builtin_exp(lenv* e, lval* a) {
   return builtin_op(e, a, "^");
-}
-
-lval* builtin_min(lenv* e, lval* a) {
-  // ensure all are numbers
-  for (int i = 0; i < a->count; ++i) {
-    ASSERT_TYPE("min", a, i, LVAL_NUM);
-  }
-
-  // pop first element
-  lval* x = lval_pop(a, 0);
-
-  while (a->count > 0) {
-    // pop next element
-    lval* y = lval_pop(a, 0);
-
-    if (x->num > y->num) {
-      x->num_type = y->num_type;
-      x->num = y->num;
-    }
-
-    lval_del(y);
-  }
-
-  lval_del(a);
-  return x;
-}
-
-lval* builtin_max(lenv* e, lval* a) {
-  // ensure all are numbers
-  for (int i = 0; i < a->count; ++i) {
-    ASSERT_TYPE("max", a, i, LVAL_NUM);
-  }
-
-  // pop first element
-  lval* x = lval_pop(a, 0);
-
-  while (a->count > 0) {
-    // pop next element
-    lval* y = lval_pop(a, 0);
-
-    if (x->num < y->num) {
-      x->num_type = y->num_type;
-      x->num = y->num;
-    }
-
-    lval_del(y);
-  }
-
-  lval_del(a);
-  return x;
 }
 
 lval* builtin_head(lenv* e, lval* a) {
@@ -1206,7 +1133,7 @@ void lval_print(lval* v) {
       break;
 
     case LVAL_ERR:
-      printf("error: %s", v->err);
+      fprintf(stderr, "error: %s", v->err);
       break;
 
     case LVAL_SYM:
@@ -1251,10 +1178,17 @@ void lval_print_str(lval* v) {
 }
 
 void lval_println(lval* v) {
-  putchar('>');
-  putchar(' ');
-  lval_print(v);
-  putchar('\n');
+  if (v->type == LVAL_ERR) {
+    fputc('>', stderr);
+    fputc(' ', stderr);
+    lval_print(v);
+    fputc('\n', stderr);
+  } else {
+    fputc('>', stdout);
+    fputc(' ', stdout);
+    lval_print(v);
+    fputc('\n', stdout);
+  }
 }
 
 char* ltype_name(int t) {

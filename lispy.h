@@ -37,8 +37,8 @@ struct lispy_environment {
 };
 
 lenv* lispy_init(void);
-char* lispy_parse(lenv*, char*);
-char* lispy_exec(lenv*, char*);
+void  lispy_parse(lenv*, char*);
+void  lispy_exec(lenv*, char*);
 void  lispy_clean(lenv*);
 
 #endif

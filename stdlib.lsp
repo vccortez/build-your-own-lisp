@@ -1,109 +1,233 @@
-; atoms
+;;;
+;;;   Lispy Standard Prelude
+;;;
+
+;;; Atoms
 (def {nil} {})
 (def {true} 1)
 (def {false} 0)
-; function definition
+
+;;; Functional Functions
+
+; Function Definitions
 (def {fun} (\ {f b} {
   def (head f) (\ (tail f) b)
 }))
-; unpack list for function
+
+; Open new scope
+(fun {let b} {
+  ((\ {_} b) ())
+})
+
+; Unpack List to Function
 (fun {unpack f l} {
   eval (join (list f) l)
 })
-; pack list for function
+
+; Unapply List to Function
 (fun {pack f & xs} {f xs})
-; curried and uncurried calling
+
+; Curried and Uncurried calling
 (def {curry} unpack)
 (def {uncurry} pack)
-; perform several things in sequence
+
+; Perform Several things in Sequence
 (fun {do & l} {
   if (== l nil)
     {nil}
     {last l}
 })
-; open new scope
-(fun {let b} {
-  ((\ {_} b) ())
-})
-; logical functions
-(fun {not x} {- 1 x})
-(fun {or x y} {+ x y})
+
+;;; Logical Functions
+
+; Logical Functions
+(fun {not x}   {- 1 x})
+(fun {or x y}  {+ x y})
 (fun {and x y} {* x y})
-; miscellaneous
-(fun {flip fn a b} {fn b a}) ; uses fn with flipped args
-(fun {ghost & xs} {eval xs}) ; useless function?
-(fun {comp fn g x} {fn (g x)}) ; uses g with x and feed it to fn
-; first, second or third list item
+
+
+;;; Numeric Functions
+
+; Minimum of Arguments
+(fun {min & xs} {
+  if (== (tail xs) nil) {fst xs}
+    {do 
+      (= {rest} (unpack min (tail xs)))
+      (= {item} (fst xs))
+      (if (< item rest) {item} {rest})
+    }
+})
+
+; Maximum of Arguments
+(fun {max & xs} {
+  if (== (tail xs) nil) {fst xs}
+    {do 
+      (= {rest} (unpack max (tail xs)))
+      (= {item} (fst xs))
+      (if (> item rest) {item} {rest})
+    }  
+})
+
+;;; Conditional Functions
+
+(fun {select & cs} {
+  if (== cs nil)
+    {error "No Selection Found"}
+    {if (fst (fst cs)) {snd (fst cs)} {unpack select (tail cs)}}
+})
+
+(fun {case x & cs} {
+  if (== cs nil)
+    {error "No Case Found"}
+    {if (== x (fst (fst cs))) {snd (fst cs)} {
+	  unpack case (join (list x) (tail cs))}}
+})
+
+(def {otherwise} true)
+
+
+;;; Misc Functions
+
+(fun {flip f a b} {f b a})
+(fun {ghost & xs} {eval xs})
+(fun {comp f g x} {f (g x)})
+
+;;; List Functions
+
+; First, Second, or Third Item in List
 (fun {fst l} { eval (head l) })
 (fun {snd l} { eval (head (tail l)) })
 (fun {trd l} { eval (head (tail (tail l))) })
-; list lenght
+
+; List Length
 (fun {len l} {
   if (== l nil)
     {0}
     {+ 1 (len (tail l))}
 })
-; nth item in list
+
+; Nth item in List
 (fun {nth n l} {
   if (== n 0)
     {fst l}
     {nth (- n 1) (tail l)}
 })
-; last item in list
+
+; Last item in List
 (fun {last l} {nth (- (len l) 1) l})
-; take n items
-(fun {take n l} {
-  if (== n 0)
-    {nil}
-    {join (head l) (take (- n 1) (tail l))}
-})
-; drop n items
-(fun {drop n l} {
-  if (== n 0)
-    {l}
-    {drop (- n 1) (tail l)}
-})
-; split at n
-(fun {split n l} {list (take n l) (drop n l)})
-; element of list
-(fun {elem x l} {
-  if (== l nil)
-    {false}
-    {if (== x (fst l)) {true} {elem x (tail l)}}
-})
-; apply function to list
+
+; Apply Function to List
 (fun {map f l} {
   if (== l nil)
     {nil}
     {join (list (f (fst l))) (map f (tail l))}
 })
-; apply filter to list
+
+; Apply Filter to List
 (fun {filter f l} {
   if (== l nil)
     {nil}
     {join (if (f (fst l)) {head l} {nil}) (filter f (tail l))}
 })
-; fold left
-(fun {reduce f z l} {
-  if (== l nil)
-    {z}
-    {reduce f (f z (fst l)) (tail l)}
+
+; Return all of list but last element
+(fun {init l} {
+  if (== (tail l) nil)
+    {nil}
+    {join (head l) (init (tail l))}
 })
-; sum and product
-(fun {sum l} {reduce + 0 l})
-(fun {prod l} {reduce * 1 l})
-; select & case & otherwise
-(def {otherwise} true)
-(fun {case x & cs} {
-  if (== cs nil)
-    {error "no case found"}
-    {if (== x (fst (fst cs)))
-      {snd (fst cs)}
-      {unpack case (join (list x) (tail cs))}
+
+; Reverse List
+(fun {reverse l} {
+  if (== l nil)
+    {nil}
+    {join (reverse (tail l)) (head l)}
+})
+
+; Fold Left
+(fun {foldl f z l} {
+  if (== l nil) 
+    {z}
+    {foldl f (f z (fst l)) (tail l)}
+})
+
+; Fold Right
+(fun {foldr f z l} {
+  if (== l nil) 
+    {z}
+    {f (fst l) (foldr f z (tail l))}
+})
+
+; Aliases to fold functions
+(def {reduce} foldl)
+(def {reduce-right} foldr)
+
+(fun {sum l} {foldl + 0 l})
+(fun {product l} {foldl * 1 l})
+
+; Take N items
+(fun {take n l} {
+  if (== n 0)
+    {nil}
+    {join (head l) (take (- n 1) (tail l))}
+})
+
+; Drop N items
+(fun {drop n l} {
+  if (== n 0)
+    {l}
+    {drop (- n 1) (tail l)}
+})
+
+; Split at N
+(fun {split n l} {list (take n l) (drop n l)})
+
+; Take While
+(fun {take-while f l} {
+  if (not (unpack f (head l)))
+    {nil}
+    {join (head l) (take-while f (tail l))}
+})
+
+; Drop While
+(fun {drop-while f l} {
+  if (not (unpack f (head l)))
+    {l}
+    {drop-while f (tail l)}
+})
+
+; Element of List
+(fun {elem x l} {
+  if (== l nil)
+    {false}
+    {if (== x (fst l)) {true} {elem x (tail l)}}
+})
+
+; Find element in list of pairs
+(fun {lookup x l} {
+  if (== l nil)
+    {error "No Element Found"}
+    {do
+      (= {key} (fst (fst l)))
+      (= {val} (snd (fst l)))
+      (if (== key x) {val} {lookup x (tail l)})
     }
 })
-(fun {select & cs} {
-  if (== cs nil)
-    {error "selection not found"}
-    {if (fst (fst cs)) {snd (fst cs)} {unpack select (tail cs)}}
+
+; Zip two lists together into a list of pairs
+(fun {zip x y} {
+  if (or (== x nil) (== y nil))
+    {nil}
+    {join (list (join (head x) (head y))) (zip (tail x) (tail y))}
+})
+
+; Unzip a list of pairs into two lists
+(fun {unzip l} {
+  if (== l nil)
+    {{nil nil}}
+    {do
+      (= {x} (fst l))
+      (= {xs} (unzip (tail l)))
+      (list (join (head x) (fst xs)) (join (tail x) (snd xs)))
+    }
 })
