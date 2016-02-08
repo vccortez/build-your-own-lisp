@@ -1,13 +1,16 @@
-CFLAGS=-std=c99 -Wall
-LIBS=-lm -leditline
+CFLAGS = -std=c99 -Wall
+LIBS = -lm -leditline
+OBJ = main.o lispy.o mpc.o
+EXE = lispy
 
-all: lispy
+all: $(EXE)
 
-lispy: mpc.o main.c
+lispy: $(OBJ)
 	$(CC) $(CFLAGS) $^ -o $@ ${LIBS}
 
-mpc.o: mpc.c
-	$(CC) $(CFLAGS) -c $< -o $@
+main.o: lispy.h
+lispy.o: lispy.h
+mpc.o: mpc.h
 
 clean:
-	@rm -f ./*.o lispy
+	@rm $(EXE) $(OBJ)
